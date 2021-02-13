@@ -75,6 +75,9 @@ public:
         _rebootOnUpdate = reboot;
     }
 
+    // This callback will be called when Update is receiving data
+    UpdateClass& onProgress(UpdateClass::THandlerFunction_Progress fn);
+
     // This function is deprecated, use rebootOnUpdate and the next one instead
     t_httpUpdate_return update(const String& url, const String& currentVersion,
                                const String& httpsCertificate, bool reboot) __attribute__((deprecated));

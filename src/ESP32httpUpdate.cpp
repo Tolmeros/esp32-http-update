@@ -34,6 +34,10 @@ ESP32HTTPUpdate::~ESP32HTTPUpdate(void)
 {
 }
 
+UpdateClass& ESP32HTTPUpdate::onProgress(UpdateClass::THandlerFunction_Progress fn) {
+    return Update.onProgress(fn);
+}
+
 HTTPUpdateResult ESP32HTTPUpdate::update(const String& url, const String& currentVersion,
         const String& httpsCertificate, bool reboot)
 {
