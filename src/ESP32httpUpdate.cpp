@@ -49,7 +49,7 @@ HTTPUpdateResult ESP32HTTPUpdate::update(const String& url, const String& curren
 {
     HTTPClient http;
     http.begin(url);
-    return handleUpdate(http, currentVersion, false);
+    return handleUpdate(http, url, currentVersion, false);
 }
 
 HTTPUpdateResult ESP32HTTPUpdate::update(const String& url, const String& currentVersion,
@@ -58,7 +58,7 @@ HTTPUpdateResult ESP32HTTPUpdate::update(const String& url, const String& curren
     HTTPClient http;
     const char * cacert = strdup(httpsCertificate.c_str());
     http.begin(url, cacert);
-    return handleUpdate(http, currentVersion, false);
+    return handleUpdate(http, url, currentVersion, false);
 }
 
 HTTPUpdateResult ESP32HTTPUpdate::updateSpiffs(const String& url, const String& currentVersion, const String& httpsCertificate)
@@ -66,16 +66,17 @@ HTTPUpdateResult ESP32HTTPUpdate::updateSpiffs(const String& url, const String& 
     HTTPClient http;
     const char * cacert = strdup(httpsCertificate.c_str());
     http.begin(url, cacert);
-    return handleUpdate(http, currentVersion, true);
+    return handleUpdate(http, url, currentVersion, true);
 }
 
 HTTPUpdateResult ESP32HTTPUpdate::updateSpiffs(const String& url, const String& currentVersion)
 {
     HTTPClient http;
     http.begin(url);
-    return handleUpdate(http, currentVersion, true);
+    return handleUpdate(http, url, currentVersion, true);
 }
 
+#if 0
 HTTPUpdateResult ESP32HTTPUpdate::update(const String& host, uint16_t port, const String& uri, const String& currentVersion,
         bool https, const String& httpsCertificate, bool reboot)
 {
@@ -94,6 +95,7 @@ HTTPUpdateResult ESP32HTTPUpdate::update(const String& host, uint16_t port, cons
     http.begin(host, port, uri);
     return handleUpdate(http, currentVersion, false);
 }
+
 HTTPUpdateResult ESP32HTTPUpdate::update(const String& host, uint16_t port, const String& url,
         const String& currentVersion, const String& httpsCertificate)
 {
@@ -103,6 +105,7 @@ HTTPUpdateResult ESP32HTTPUpdate::update(const String& host, uint16_t port, cons
     return handleUpdate(http, currentVersion, false);
 
 }
+#endif
 
 /**
  * return error code as int
@@ -166,7 +169,7 @@ String ESP32HTTPUpdate::getLastErrorString(void)
  * @param currentVersion const char *
  * @return HTTPUpdateResult
  */
-HTTPUpdateResult ESP32HTTPUpdate::handleUpdate(HTTPClient& http, const String& currentVersion, bool spiffs)
+HTTPUpdateResult ESP32HTTPUpdate::handleUpdate(HTTPClient& http, const String& url, const String& currentVersion, bool spiffs)
 {
 
     HTTPUpdateResult ret = HTTP_UPDATE_FAILED;
@@ -195,14 +198,15 @@ HTTPUpdateResult ESP32HTTPUpdate::handleUpdate(HTTPClient& http, const String& c
         http.addHeader(F("x-ESP32-version"), currentVersion);
     }
 
-    const char * headerkeys[] = { "x-MD5" };
+    const char * headerkeys[] = { "x-md5", "accept-ranges", "content-range" };
     size_t headerkeyssize = sizeof(headerkeys) / sizeof(char*);
 
     // track these headers
     http.collectHeaders(headerkeys, headerkeyssize);
 
 
-    int code = http.GET();
+    //int code = http.GET();
+    int code = http.sendRequest("HEAD");
     int len = http.getSize();
 
     if(code <= 0) {
@@ -218,8 +222,8 @@ HTTPUpdateResult ESP32HTTPUpdate::handleUpdate(HTTPClient& http, const String& c
     DEBUG_HTTP_UPDATE("[httpUpdate]  - code: %d\n", code);
     DEBUG_HTTP_UPDATE("[httpUpdate]  - len: %d\n", len);
 
-    if(http.hasHeader("x-MD5")) {
-        DEBUG_HTTP_UPDATE("[httpUpdate]  - MD5: %s\n", http.header("x-MD5").c_str());
+    if(http.hasHeader("x-md5")) {
+        DEBUG_HTTP_UPDATE("[httpUpdate]  - MD5: %s\n", http.header("x-md5").c_str());
     }
 
     if(currentVersion && currentVersion[0] != 0x00) {
@@ -299,7 +303,7 @@ HTTPUpdateResult ESP32HTTPUpdate::handleUpdate(HTTPClient& http, const String& c
                     */
                 }
 
-                if(runUpdate(*tcp, len, http.header("x-MD5"), command)) {
+                if(runUpdatePartial(http, url, len, http.header("x-md5"), command)) {
                     ret = HTTP_UPDATE_OK;
                     DEBUG_HTTP_UPDATE("[httpUpdate] Update ok\n");
                     http.end();
@@ -341,6 +345,105 @@ HTTPUpdateResult ESP32HTTPUpdate::handleUpdate(HTTPClient& http, const String& c
 
     http.end();
     return ret;
+}
+
+/**
+ * write Update to flash
+ * @param in Stream&
+ * @param size uint32_t
+ * @param md5 String
+ * @return true if Update ok
+ */
+bool ESP32HTTPUpdate::runUpdatePartial(HTTPClient& http, const String& url, uint32_t size, String md5, int command)
+{
+
+    StreamString error;
+
+    char bytesRange[20];
+    int code;
+    int len, wlen;
+    byte buffer[UPDATE_BUFFER_SIZE];
+
+    if(!Update.begin(size, command)) {
+        _lastError = Update.getError();
+        Update.printError(error);
+        error.trim(); // remove line ending
+        DEBUG_HTTP_UPDATE("[httpUpdate] Update.begin failed! (%s)\n", error.c_str());
+        return false;
+    }
+
+    if(md5.length()) {
+        if(!Update.setMD5(md5.c_str())) {
+            _lastError = HTTP_UE_SERVER_FAULTY_MD5;
+            DEBUG_HTTP_UPDATE("[httpUpdate] Update.setMD5 failed! (%s)\n", md5.c_str());
+            return false;
+        }
+    }
+
+    if (http.hasHeader("accept-ranges")) {
+        DEBUG_HTTP_UPDATE("[httpUpdate] has accept-ranges.\n");
+        http.end();
+        for (byte i=0; i < size / UPDATE_BUFFER_SIZE; i++) {
+            http.begin(url);
+            //sprintf_P(bytesRange, F("bytes=%d-%d"),i*512,(i+1)*512-1);
+            sprintf(bytesRange, "bytes=%d-%d",i*UPDATE_BUFFER_SIZE,(i+1)*UPDATE_BUFFER_SIZE-1);
+            http.addHeader(F("range"), bytesRange);
+
+            code = http.GET();
+            len = http.getSize();
+
+            DEBUG_HTTP_UPDATE("[httpUpdate] Header read fin.\n");
+            DEBUG_HTTP_UPDATE("[httpUpdate] Server header:\n");
+            DEBUG_HTTP_UPDATE("[httpUpdate]  - code: %d\n", code);
+            DEBUG_HTTP_UPDATE("[httpUpdate]  - len: %d\n", len);
+
+            http.getString().getBytes(buffer, UPDATE_BUFFER_SIZE);
+            wlen = Update.write(buffer, UPDATE_BUFFER_SIZE);
+
+            DEBUG_HTTP_UPDATE("[httpUpdate]  - wlen: %d\n", wlen);
+            http.end();
+        }
+
+        http.begin(url);
+        //sprintf_P(bytesRange, F("bytes=%d-%d"),size - size % 512,size-1);
+        sprintf(bytesRange, "bytes=%d-%d", size - size % UPDATE_BUFFER_SIZE, size-1);
+        http.addHeader(F("range"), bytesRange);
+
+        code = http.GET();
+        len = http.getSize();
+
+        DEBUG_HTTP_UPDATE("[httpUpdate] Header read fin.\n");
+        DEBUG_HTTP_UPDATE("[httpUpdate] Server header:\n");
+        DEBUG_HTTP_UPDATE("[httpUpdate]  - code: %d\n", code);
+        DEBUG_HTTP_UPDATE("[httpUpdate]  - len: %d\n", len);
+
+        http.getString().getBytes(buffer, UPDATE_BUFFER_SIZE);
+        wlen = Update.write(buffer, len);
+
+        DEBUG_HTTP_UPDATE("[httpUpdate]  - wlen: %d\n", wlen);
+        http.end();
+    }
+
+
+    #if 0
+    if(Update.writeStream(in) != size) {
+        _lastError = Update.getError();
+        Update.printError(error);
+        error.trim(); // remove line ending
+        DEBUG_HTTP_UPDATE("[httpUpdate] Update.writeStream failed! (%s)\n", error.c_str());
+        return false;
+    }
+    #endif
+
+    if(!Update.end()) {
+        _lastError = Update.getError();
+        Update.printError(error);
+        error.trim(); // remove line ending
+        DEBUG_HTTP_UPDATE("[httpUpdate] Update.end failed! (%s)\n", error.c_str());
+        return false;
+    }
+
+    return true;
 }
 
 /**

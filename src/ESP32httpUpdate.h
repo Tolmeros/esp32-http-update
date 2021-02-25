@@ -36,6 +36,9 @@
 #include "FS.h"
 #include "SPIFFS.h"
 
+#define DEBUG_ESP_HTTP_UPDATE
+#define DEBUG_ESP_PORT Serial
+
 #ifdef DEBUG_ESP_HTTP_UPDATE
 #ifdef DEBUG_ESP_PORT
 #define DEBUG_HTTP_UPDATE(...) DEBUG_ESP_PORT.printf( __VA_ARGS__ )
@@ -55,6 +58,8 @@
 #define HTTP_UE_SERVER_FAULTY_MD5           (-105)
 #define HTTP_UE_BIN_VERIFY_HEADER_FAILED    (-106)
 #define HTTP_UE_BIN_FOR_WRONG_FLASH         (-107)
+
+#define UPDATE_BUFFER_SIZE 1024
 
 enum HTTPUpdateResult {
     HTTP_UPDATE_FAILED,
@@ -84,6 +89,7 @@ public:
     t_httpUpdate_return update(const String& url, const String& currentVersion,
                                const String& httpsCertificate);
 
+    #if 0
     // This function is deprecated, use one of the overloads below along with rebootOnUpdate
     t_httpUpdate_return update(const String& host, uint16_t port, const String& uri, const String& currentVersion,
                                bool https, const String& httpsCertificate, bool reboot) __attribute__((deprecated));
@@ -92,6 +98,7 @@ public:
                                const String& currentVersion = "");
     t_httpUpdate_return update(const String& host, uint16_t port, const String& url,
                                const String& currentVersion, const String& httpsCertificate);
+    #endif
 
     // This function is deprecated, use rebootOnUpdate and the next one instead
     t_httpUpdate_return updateSpiffs(const String& url, const String& currentVersion,
@@ -104,8 +111,9 @@ public:
     String getLastErrorString(void);
 
 protected:
-    t_httpUpdate_return handleUpdate(HTTPClient& http, const String& currentVersion, bool spiffs = false);
+    t_httpUpdate_return handleUpdate(HTTPClient& http, const String& url, const String& currentVersion, bool spiffs = false);
     bool runUpdate(Stream& in, uint32_t size, String md5, int command = U_FLASH);
+    bool runUpdatePartial(HTTPClient& http, const String& url, uint32_t size, String md5, int command = U_FLASH);
 
     int _lastError;
     bool _rebootOnUpdate = true;
