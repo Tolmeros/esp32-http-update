@@ -1,7 +1,3 @@
-**This library deprecated, since Arduino Framework for ESP32 added this support officially.** See: https://github.com/espressif/arduino-esp32/tree/master/libraries/Update
-
---
-
 # ESP32 HTTP Firmware Update (OTA)
 
 [![Codacy Badge](https://api.codacy.com/project/badge/Grade/03b36fac07824cd08884e1f19bb34fcb)](https://www.codacy.com/app/suculent/esp32-http-update?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=suculent/esp32-http-update&amp;utm_campaign=Badge_Grade)
