@@ -75,6 +75,8 @@ public:
         _rebootOnUpdate = reboot;
     }
 
+    void sendMACs(bool enabled = true);
+
     // This function is deprecated, use rebootOnUpdate and the next one instead
     t_httpUpdate_return update(const String& url, const String& currentVersion,
                                const String& httpsCertificate, bool reboot) __attribute__((deprecated));
@@ -107,6 +109,7 @@ protected:
 
     int _lastError;
     bool _rebootOnUpdate = true;
+    bool _sendMACs = false;
 };
 
 #if !defined(NO_GLOBAL_INSTANCES) && !defined(NO_GLOBAL_HTTPUPDATE)

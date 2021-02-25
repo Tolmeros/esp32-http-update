@@ -34,6 +34,10 @@ ESP32HTTPUpdate::~ESP32HTTPUpdate(void)
 {
 }
 
+void ESP32HTTPUpdate::sendMACs(bool enabled /*= true*/) {
+    _sendMACs = enabled;
+}
+
 HTTPUpdateResult ESP32HTTPUpdate::update(const String& url, const String& currentVersion,
         const String& httpsCertificate, bool reboot)
 {
@@ -171,8 +175,10 @@ HTTPUpdateResult ESP32HTTPUpdate::handleUpdate(HTTPClient& http, const String& c
     http.useHTTP10(true);
     http.setTimeout(30000); // allow time to download on slower networks
     http.setUserAgent(F("ESP32-http-Update"));
-    http.addHeader(F("x-ESP32-STA-MAC"), WiFi.macAddress());
-    http.addHeader(F("x-ESP32-AP-MAC"), WiFi.softAPmacAddress());
+    if (_sendMACs) {
+        http.addHeader(F("x-ESP32-STA-MAC"), WiFi.macAddress());
+        http.addHeader(F("x-ESP32-AP-MAC"), WiFi.softAPmacAddress());
+    }
     // http.addHeader(F("x-ESP32-free-space"), String(ESP.getFreeSketchSpace()));
     // http.addHeader(F("x-ESP32-sketch-size"), String(ESP.getSketchSize()));
     // http.addHeader(F("x-ESP32-sketch-md5"), String(ESP.getSketchMD5()));
